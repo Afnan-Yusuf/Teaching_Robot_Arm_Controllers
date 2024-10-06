@@ -6,29 +6,38 @@
 #define rmf 11
 #define rmb 10
 
-// Single encoder pin (using only one channel, e.g., channel A)
+int maxspeed = 100;
+
+bool dir = false;  // Direction flag: false = forward, true = backward
 #define left_motor_encoder 2
 #define right_motor_encoder 3
 
 // Encoder variables
 volatile long encoderPos = 0;  // Current encoder position
-int targetPosA = 1000;  // Encoder position for "to" position
-int targetPosB = -1000; // Encoder position for "fro" position
+int targetPosA = 500;  // Encoder position for "to" position
+int targetPosB = -500; // Encoder position for "fro" position
 int currentTarget = targetPosA;  // Current target position
 
 // PID control variables
 double setpoint, input, output;
-double Kp = 1.2, Ki = 0.01, Kd = 0.05;  // PID constants
+double Kp = 3, Ki = 0.05, Kd = 6;  // PID constants
 PID motorPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
 // Function to handle encoder A interrupts
 void handleEncoderA() {
-    encoderPos++;  // Increment position on each pulse (assuming forward motion)
+    // Increment or decrement encoderPos based on motor direction
+    if (!dir) {
+        encoderPos++;
+    } else {
+        encoderPos--;
+    }
 }
 
 // Function to control motor direction and speed
 void controlMotor(int speed) {
-    speed = constrain(speed, -255, 255);  // Use constrain to limit speed
+    // Constrain the speed to the maximum allowable speed
+    speed = constrain(speed, -maxspeed, maxspeed);
+
     if (speed > 0) {
         analogWrite(lmf, speed);
         analogWrite(lmb, 0);
@@ -37,7 +46,7 @@ void controlMotor(int speed) {
         analogWrite(lmb, -speed);
     } else {
         analogWrite(lmf, 0);
-        analogWrite(lmb, 0); // Stop the motor
+        analogWrite(lmb, 0);  // Stop the motor
     }
 }
 
@@ -73,7 +82,9 @@ void loop() {
         // Change target for to and fro motion
         if (currentTarget == targetPosA) {
             currentTarget = targetPosB;
+            dir = !dir;
         } else {
+            dir = !dir;
             currentTarget = targetPosA;
         }
         setpoint = currentTarget;  // Update setpoint for PID
