@@ -1,32 +1,30 @@
 #include <PID_v1.h>
-#include <Arduino.h>
+#include <Ramp.h>  // Include the Ramp library
 
 #define lmf 5
 #define lmb 6
-#define rmf 11
-#define rmb 10
 
 int maxspeed = 255;
-
 bool dir = false;  // Direction flag: false = forward, true = backward
-#define left_motor_encoder 2
-#define right_motor_encoder 3
 
-int error = 0;
+#define left_motor_encoder 2
+
 // Encoder variables
-volatile long encoderPos = 0;  
-int targetPosA = 10;  
-int targetPosB = -500; // Encoder position for "fro" position
-int currentTarget = targetPosA;  // Current target position
+volatile long encoderPos = 0;
+int targetPosA = 10;
 
 // PID control variables
 double setpoint, input, output;
-double Kp = 1, Ki = 0.04, Kd = .001;  // PID constants
+double Kp = 1, Ki = 0.04, Kd = 0.001;  // PID constants
 PID motorPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
-// Function to handle encoder A interrupts
+// Ramp object
+ramp motorRamp;  // Create a Ramp object for motor control
+int rampDuration = 1000;  // Duration for ramping up (in ms)
+int rampTargetSpeed = 0;  // Target motor speed that will be ramped
+
+// Function to handle encoder interrupts
 void handleEncoderA() {
-    // Increment or decrement encoderPos based on motor direction
     if (!dir) {
         encoderPos++;
     } else {
@@ -36,9 +34,7 @@ void handleEncoderA() {
 
 // Function to control motor direction and speed
 void controlMotor(int speed) {
-    // Constrain the speed to the maximum allowable speed
     speed = constrain(speed, -maxspeed, maxspeed);
-
     if (speed > 0) {
         analogWrite(lmf, speed);
         analogWrite(lmb, 0);
@@ -65,38 +61,36 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(left_motor_encoder), handleEncoderA, RISING);  // Trigger on rising edge
 
     // PID setup
-    setpoint = currentTarget;
+    setpoint = targetPosA;
     motorPID.SetMode(AUTOMATIC);
     motorPID.SetOutputLimits(-255, 255);  // Limit output to motor's PWM range
+
+    // Ramp setup
+    motorRamp.go(0);  // Set initial speed to 0
 }
 
 void loop() {
-    // Read current encoder position as input to the PID
     input = encoderPos;
 
-    // Run PID calculation
+    // Compute PID output
     motorPID.Compute();
 
-    // Control the motor based on PID output
+    // Set ramp target based on PID output
+    rampTargetSpeed = output;
+    motorRamp.go(rampTargetSpeed);  // Set the PID output as the ramp target
 
-    error = encoderPos - targetPosA;
-    // Check if the position is close to the target and switch direction
-    if(error < 5 || error > 5){
-        controlMotor(output);
-    }else{
-        controlMotor(0);
-    }
+    // Update the ramp object and get the current ramped value
+    int currentRampSpeed = motorRamp.update();  // Update the ramp and get the current ramp speed
+
+    // Control motor with ramped speed value
+    controlMotor(currentRampSpeed);
 
     // Debugging information
+    Serial.print("Encoder: ");
     Serial.print(encoderPos);
-    Serial.print("\t");
+    Serial.print("\tPID Output: ");
     Serial.print(output);
-    Serial.print("\t");
-    Serial.print(targetPosA);
-    Serial.print("\t");
-    Serial.println(error);
-    targetPosA +=1;
+    Serial.print("\tRamp Speed: ");
+    Serial.println(currentRampSpeed);
 
-
-    delay(10);  // Small delay to avoid overwhelming the serial monitor
 }
