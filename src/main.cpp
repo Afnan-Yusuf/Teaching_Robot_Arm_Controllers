@@ -1,91 +1,92 @@
-// Arm controller using serial data from esp32
+#include <PID_v1.h>
 #include <Arduino.h>
+
 #define lmf 5
 #define lmb 6
-#define rmf 10
-#define rmb 9
+#define rmf 11
+#define rmb 10
 
-#define left_motor_limit1 3
-#define left_motor_limit2 4
-#define right_motor_limit1 7
-#define right_motor_limit2 8
+// Single encoder pin (using only one channel, e.g., channel A)
+#define left_motor_encoder 2
+#define right_motor_encoder 3
 
-bool homed = false;
-String dat;
-int homespeed = 200;
+// Encoder variables
+volatile long encoderPos = 0;  // Current encoder position
+int targetPosA = 1000;  // Encoder position for "to" position
+int targetPosB = -1000; // Encoder position for "fro" position
+int currentTarget = targetPosA;  // Current target position
 
-void sweep();
-void stopmot();
-void home();
+// PID control variables
+double setpoint, input, output;
+double Kp = 1.2, Ki = 0.01, Kd = 0.05;  // PID constants
+PID motorPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
+
+// Function to handle encoder A interrupts
+void handleEncoderA() {
+    encoderPos++;  // Increment position on each pulse (assuming forward motion)
+}
+
+// Function to control motor direction and speed
+void controlMotor(int speed) {
+    speed = constrain(speed, -255, 255);  // Use constrain to limit speed
+    if (speed > 0) {
+        analogWrite(lmf, speed);
+        analogWrite(lmb, 0);
+    } else if (speed < 0) {
+        analogWrite(lmf, 0);
+        analogWrite(lmb, -speed);
+    } else {
+        analogWrite(lmf, 0);
+        analogWrite(lmb, 0); // Stop the motor
+    }
+}
+
 void setup() {
-  Serial.begin(9600);
-  pinMode(lmf, OUTPUT);
-  pinMode(lmb, OUTPUT);
-  pinMode(rmf, OUTPUT);
-  pinMode(rmb, OUTPUT);
-  pinMode(left_motor_limit1, INPUT);
-  pinMode(left_motor_limit2, INPUT);
-  pinMode(right_motor_limit1, INPUT);
-  pinMode(right_motor_limit2, INPUT);
+    Serial.begin(9600);
+
+    // Motor control pins setup
+    pinMode(lmf, OUTPUT);
+    pinMode(lmb, OUTPUT);
+
+    // Encoder pin setup
+    pinMode(left_motor_encoder, INPUT);
+    attachInterrupt(digitalPinToInterrupt(left_motor_encoder), handleEncoderA, RISING);  // Trigger on rising edge
+
+    // PID setup
+    setpoint = currentTarget;
+    motorPID.SetMode(AUTOMATIC);
+    motorPID.SetOutputLimits(-255, 255);  // Limit output to motor's PWM range
 }
 
 void loop() {
-  if(Serial.available() > 0){
-     dat = Serial.readStringUntil(',');
-    
-  }
-  //convert the dat string to int
-  int val = dat.toInt();
+    // Read current encoder position as input to the PID
+    input = encoderPos;
 
-  if(val == 1){
-    sweep();
-  }
+    // Run PID calculation
+    motorPID.Compute();
 
-  if(val == 2){
-    home();
-  }
-  if(val == 3){
-    stopmot();
-  }
-}
+    // Control the motor based on PID output
+    controlMotor(output);
 
-void sweep(){
-  digitalWrite(lmf, HIGH);
-  digitalWrite(lmb, LOW);
-  digitalWrite(rmf, HIGH);
-  digitalWrite(rmb, LOW);
-}
-
-void home(){
-  while (homed == true){
-    bool lhomed  = false;
-    
-    float left_motor_limit1_state = digitalRead(left_motor_limit1);
-    float left_motor_limit2_state = digitalRead(left_motor_limit2);
-    float right_motor_limit1_state = digitalRead(right_motor_limit1);
-    float right_motor_limit2_state = digitalRead(right_motor_limit2);
-    if(left_motor_limit1_state == 0){
-      analogWrite(lmf, homespeed);
-    }else{
-      analogWrite(lmf, 0);
-      if (lhomed == true){
-        homed = true;
-      }
+    // Check if the position is close to the target and switch direction
+    if (abs(encoderPos - currentTarget) < 5) {
+        // Change target for to and fro motion
+        if (currentTarget == targetPosA) {
+            currentTarget = targetPosB;
+        } else {
+            currentTarget = targetPosA;
+        }
+        setpoint = currentTarget;  // Update setpoint for PID
+        delay(1000);  // Brief pause to simulate the stop at each end
     }
 
-    if(right_motor_limit1_state == 0){
-      analogWrite(rmf, homespeed);
-    }else{
-      analogWrite(rmf, 0);
-      lhomed = true;
-    }
-  }
+    // Debugging information
+    Serial.print("Current Position: ");
+    Serial.print(encoderPos);
+    Serial.print(" | Target Position: ");
+    Serial.print(currentTarget);
+    Serial.print(" | Output: ");
+    Serial.println(output);
 
-}
-
-void stopmot(){
-  analogWrite(lmf, 0);
-  analogWrite(lmb, 0);
-  analogWrite(rmf, 0);
-  analogWrite(rmb, 0);
+    delay(10);  // Small delay to avoid overwhelming the serial monitor
 }
