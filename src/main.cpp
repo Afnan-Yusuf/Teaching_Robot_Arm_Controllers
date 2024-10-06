@@ -12,9 +12,10 @@ bool dir = false;  // Direction flag: false = forward, true = backward
 #define left_motor_encoder 2
 #define right_motor_encoder 3
 
+int error = 0;
 // Encoder variables
 volatile long encoderPos = 0;  // Current encoder position
-int targetPosA = 500;  // Encoder position for "to" position
+int targetPosA = 30;  // Encoder position for "to" position
 int targetPosB = -500; // Encoder position for "fro" position
 int currentTarget = targetPosA;  // Current target position
 
@@ -75,29 +76,25 @@ void loop() {
     motorPID.Compute();
 
     // Control the motor based on PID output
-    controlMotor(output);
-
+    
+    error = encoderPos - targetPosA;
     // Check if the position is close to the target and switch direction
-    if (abs(encoderPos - currentTarget) < 5) {
-        // Change target for to and fro motion
-        if (currentTarget == targetPosA) {
-            currentTarget = targetPosB;
-            dir = !dir;
-        } else {
-            dir = !dir;
-            currentTarget = targetPosA;
-        }
-        setpoint = currentTarget;  // Update setpoint for PID
-        delay(1000);  // Brief pause to simulate the stop at each end
+    if(error < 0){
+        controlMotor(0);
+    }else{
+        controlMotor(output);
     }
 
     // Debugging information
-    Serial.print("Current Position: ");
     Serial.print(encoderPos);
-    Serial.print(" | Target Position: ");
-    Serial.print(currentTarget);
-    Serial.print(" | Output: ");
-    Serial.println(output);
+    Serial.print("\t");
+    Serial.print(output);
+    Serial.print("\t");
+    Serial.print(targetPosA);
+    Serial.print("\t");
+    Serial.println(error);
+
+
 
     delay(10);  // Small delay to avoid overwhelming the serial monitor
 }
