@@ -21,7 +21,7 @@ int currentTarget = targetPosA;  // Current target position
 
 // PID control variables
 double setpoint, input, output;
-double Kp = 3, Ki = 0.05, Kd = 6;  // PID constants
+double Kp = 3, Ki = 0.05, Kd = 0;  // PID constants
 PID motorPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
 // Function to handle encoder A interrupts
