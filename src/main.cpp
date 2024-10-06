@@ -94,3 +94,130 @@ void loop() {
     Serial.println(currentRampSpeed);
 
 }
+
+/*
+#include <PID_v1.h>
+#include <Ramp.h>
+
+// Motor A pins
+#define MOTOR_A_FWD 5
+#define MOTOR_A_BWD 6
+#define ENCODER_A 2
+
+// Motor B pins
+#define MOTOR_B_FWD 9
+#define MOTOR_B_BWD 10
+#define ENCODER_B 3
+
+#define MAX_SPEED 255
+
+// Motor structures
+struct Motor {
+    volatile long encoderPos;
+    int targetPos;
+    bool direction;
+    PID* pid;
+    ramp* ramp;
+    double input, output, setpoint;
+    int fwdPin, bwdPin;
+};
+
+Motor motorA, motorB;
+
+// PID constants
+const double Kp = 1, Ki = 0.04, Kd = 0.001;
+
+// Function prototypes
+void setupMotor(Motor& motor, int fwdPin, int bwdPin, int encoderPin);
+void handleEncoder(Motor& motor);
+void controlMotor(Motor& motor);
+
+void setup() {
+    Serial.begin(115200);  // Increased baud rate for faster communication
+
+    setupMotor(motorA, MOTOR_A_FWD, MOTOR_A_BWD, ENCODER_A);
+    setupMotor(motorB, MOTOR_B_FWD, MOTOR_B_BWD, ENCODER_B);
+
+    // Attach interrupts
+    attachInterrupt(digitalPinToInterrupt(ENCODER_A), []{ handleEncoder(motorA); }, RISING);
+    attachInterrupt(digitalPinToInterrupt(ENCODER_B), []{ handleEncoder(motorB); }, RISING);
+}
+
+void loop() {
+    // Update both motors
+    updateMotor(motorA);
+    updateMotor(motorB);
+
+    // Print debug info every 100ms
+    static unsigned long lastPrint = 0;
+    if (millis() - lastPrint > 100) {
+        printDebugInfo();
+        lastPrint = millis();
+    }
+}
+
+void setupMotor(Motor& motor, int fwdPin, int bwdPin, int encoderPin) {
+    motor.fwdPin = fwdPin;
+    motor.bwdPin = bwdPin;
+    motor.encoderPos = 0;
+    motor.targetPos = 0;
+    motor.direction = false;
+
+    pinMode(fwdPin, OUTPUT);
+    pinMode(bwdPin, OUTPUT);
+    pinMode(encoderPin, INPUT_PULLUP);
+
+    motor.pid = new PID(&motor.input, &motor.output, &motor.setpoint, Kp, Ki, Kd, DIRECT);
+    motor.pid->SetMode(AUTOMATIC);
+    motor.pid->SetOutputLimits(-MAX_SPEED, MAX_SPEED);
+
+    motor.ramp = new ramp();
+    motor.ramp->go(0);
+}
+
+void handleEncoder(Motor& motor) {
+    if (!motor.direction) {
+        motor.encoderPos++;
+    } else {
+        motor.encoderPos--;
+    }
+}
+
+void updateMotor(Motor& motor) {
+    motor.input = motor.encoderPos;
+    motor.setpoint = motor.targetPos;
+
+    motor.pid->Compute();
+
+    motor.ramp->go(motor.output);
+    int currentSpeed = motor.ramp->update();
+
+    controlMotor(motor, currentSpeed);
+}
+
+void controlMotor(Motor& motor, int speed) {
+    speed = constrain(speed, -MAX_SPEED, MAX_SPEED);
+    if (speed > 0) {
+        analogWrite(motor.fwdPin, speed);
+        analogWrite(motor.bwdPin, 0);
+        motor.direction = false;
+    } else if (speed < 0) {
+        analogWrite(motor.fwdPin, 0);
+        analogWrite(motor.bwdPin, -speed);
+        motor.direction = true;
+    } else {
+        analogWrite(motor.fwdPin, 0);
+        analogWrite(motor.bwdPin, 0);
+    }
+}
+
+void printDebugInfo() {
+    Serial.print("A: ");
+    Serial.print(motorA.encoderPos);
+    Serial.print(",");
+    Serial.print(motorA.output);
+    Serial.print(" B: ");
+    Serial.print(motorB.encoderPos);
+    Serial.print(",");
+    Serial.println(motorB.output);
+}  */
