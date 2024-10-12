@@ -1,223 +1,243 @@
 #include <PID_v1.h>
-#include <Ramp.h>  // Include the Ramp library
+#include <Ramp.h> // Include the Ramp library
 
-#define lmf 5
-#define lmb 6
+// Motor control pins
+#define LMF 5
+#define LMB 6
+#define RMF 11
+#define RMB 10
 
-int maxspeed = 255;
-bool dir = false;  // Direction flag: false = forward, true = backward
+#define sl1 0
+#define sl2 1
 
-#define left_motor_encoder 2
+// Encoder pins
+#define LEFT_ENCODER 2
+#define RIGHT_ENCODER 3
+
+// Motor configurations
+int maxSpeed = 50;
+bool leftDir = false; // Direction flags
+bool rightDir = false;
 
 // Encoder variables
-volatile long encoderPos = 0;
-int targetPosA = 10;
+volatile long leftEncoderPos = 0;
+volatile long rightEncoderPos = 0;
+int targetLeftPos = 100;   // forwalking
+int targetRightPos = -100; // forwalking
 
-// PID control variables
-double setpoint, input, output;
-double Kp = 1, Ki = 0.04, Kd = 0.001;  // PID constants
-PID motorPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
+int handshakepos = 150;
 
-// Ramp object
-ramp motorRamp;  // Create a Ramp object for motor control
-int rampDuration = 1000;  // Duration for ramping up (in ms)
-int rampTargetSpeed = 0;  // Target motor speed that will be ramped
+int currentLeftTarget = targetLeftPos;
+int currentRightTarget = targetRightPos;
+
+// PID variables
+double leftSetpoint, leftInput, leftOutput;
+double rightSetpoint, rightInput, rightOutput;
+double Kp = 1.8, Ki = 0.06, Kd = 0.001;
+
+PID leftMotorPID(&leftInput, &leftOutput, &leftSetpoint, Kp, Ki, Kd, DIRECT);
+PID rightMotorPID(&rightInput, &rightOutput, &rightSetpoint, Kp, Ki, Kd, DIRECT);
+
+// Ramp object for motor speed control
+ramp motorRamp;
+int rampDuration = 1000;
+int rampTargetSpeed = 0;
+
+// Timer variables
+unsigned long walkingStartTime;
+bool isWalking = true;
 
 // Function to handle encoder interrupts
-void handleEncoderA() {
-    if (!dir) {
-        encoderPos++;
-    } else {
-        encoderPos--;
+void handleLeftEncoder()
+{
+    leftDir ? leftEncoderPos-- : leftEncoderPos++;
+}
+
+void handleRightEncoder()
+{
+    rightDir ? rightEncoderPos-- : rightEncoderPos++;
+}
+
+void handshake();
+// Function to control motor speed and direction
+void controlMotor(int leftSpeed, int rightSpeed)
+{
+    leftSpeed = constrain(leftSpeed, -maxSpeed, maxSpeed);
+    rightSpeed = constrain(rightSpeed, -maxSpeed, maxSpeed);
+
+    // Left motor control
+    if (leftSpeed > 0)
+    {
+        analogWrite(LMF, leftSpeed);
+        analogWrite(LMB, 0);
+        leftDir = false;
+    }
+    else
+    {
+        analogWrite(LMF, 0);
+        analogWrite(LMB, -leftSpeed);
+        leftDir = true;
+    }
+
+    // Right motor control
+    if (rightSpeed > 0)
+    {
+        analogWrite(RMF, rightSpeed);
+        analogWrite(RMB, 0);
+        rightDir = false;
+    }
+    else
+    {
+        analogWrite(RMF, 0);
+        analogWrite(RMB, -rightSpeed);
+        rightDir = true;
     }
 }
 
-// Function to control motor direction and speed
-void controlMotor(int speed) {
-    speed = constrain(speed, -maxspeed, maxspeed);
-    if (speed > 0) {
-        analogWrite(lmf, speed);
-        analogWrite(lmb, 0);
-        dir = false;
-    } else if (speed < 0) {
-        analogWrite(lmf, 0);
-        analogWrite(lmb, -speed);
-        dir = true;
-    } else {
-        analogWrite(lmf, 0);
-        analogWrite(lmb, 0);  // Stop the motor
-    }
-}
-
-void setup() {
+void setup()
+{
     Serial.begin(9600);
 
-    // Motor control pins setup
-    pinMode(lmf, OUTPUT);
-    pinMode(lmb, OUTPUT);
+    // Motor setup
+    pinMode(LMF, OUTPUT);
+    pinMode(LMB, OUTPUT);
+    pinMode(RMF, OUTPUT);
+    pinMode(RMB, OUTPUT);
 
-    // Encoder pin setup
-    pinMode(left_motor_encoder, INPUT);
-    attachInterrupt(digitalPinToInterrupt(left_motor_encoder), handleEncoderA, RISING);  // Trigger on rising edge
+    pinMode(sl1, OUTPUT);
+    pinMode(sl2, OUTPUT);
+
+    // Encoder setup
+    pinMode(LEFT_ENCODER, INPUT);
+    pinMode(RIGHT_ENCODER, INPUT);
+    attachInterrupt(digitalPinToInterrupt(LEFT_ENCODER), handleLeftEncoder, RISING);
+    attachInterrupt(digitalPinToInterrupt(RIGHT_ENCODER), handleRightEncoder, RISING);
 
     // PID setup
-    setpoint = targetPosA;
-    motorPID.SetMode(AUTOMATIC);
-    motorPID.SetOutputLimits(-255, 255);  // Limit output to motor's PWM range
+    leftSetpoint = currentLeftTarget;
+    rightSetpoint = currentRightTarget;
+    leftMotorPID.SetMode(AUTOMATIC);
+    leftMotorPID.SetOutputLimits(-255, 255);
+    rightMotorPID.SetMode(AUTOMATIC);
+    rightMotorPID.SetOutputLimits(-255, 255);
 
-    // Ramp setup
-    motorRamp.go(0);  // Set initial speed to 0
+    // Initialize ramp
+
+    // Start timer
+    walkingStartTime = millis();
 }
 
-void loop() {
-    input = encoderPos;
+// Walking motion control
+void walking()
+{
+    leftInput = leftEncoderPos;
+    rightInput = rightEncoderPos;
+
+    // Adjust the target positions when within error threshold
+    if (abs(currentLeftTarget - leftEncoderPos) < 5 && abs(currentRightTarget - rightEncoderPos) < 5)
+    {
+        if (currentLeftTarget == targetLeftPos)
+        {
+            currentLeftTarget = targetRightPos;
+            currentRightTarget = targetLeftPos;
+        }
+        else
+        {
+            currentLeftTarget = targetLeftPos;
+            currentRightTarget = targetRightPos;
+        }
+        leftSetpoint = currentLeftTarget;
+        rightSetpoint = currentRightTarget;
+    }
 
     // Compute PID output
-    motorPID.Compute();
+    leftMotorPID.Compute();
+    rightMotorPID.Compute();
 
-    // Set ramp target based on PID output
-    rampTargetSpeed = output;
-    motorRamp.go(rampTargetSpeed);  // Set the PID output as the ramp target
-
-    // Update the ramp object and get the current ramped value
-    int currentRampSpeed = motorRamp.update();  // Update the ramp and get the current ramp speed
-
-    // Control motor with ramped speed value
-    controlMotor(currentRampSpeed);
-
-    // Debugging information
-    Serial.print("Encoder: ");
-    Serial.print(encoderPos);
-    Serial.print("\tPID Output: ");
-    Serial.print(output);
-    Serial.print("\tRamp Speed: ");
-    Serial.println(currentRampSpeed);
-
+    // Ramp motor speeds based on PID outputs
+    controlMotor(leftOutput, rightOutput);
 }
 
-/*
-#include <PID_v1.h>
-#include <Ramp.h>
+// Return to zero position
+void returnToZero()
+{
+    // Set the target setpoints to zero
+    leftSetpoint = 0;
+    rightSetpoint = 0;
 
-// Motor A pins
-#define MOTOR_A_FWD 5
-#define MOTOR_A_BWD 6
-#define ENCODER_A 2
+    // Update the encoder readings
+    leftInput = leftEncoderPos;
+    rightInput = rightEncoderPos;
 
-// Motor B pins
-#define MOTOR_B_FWD 9
-#define MOTOR_B_BWD 10
-#define ENCODER_B 3
+    // Compute PID output
+    leftMotorPID.Compute();
+    rightMotorPID.Compute();
 
-#define MAX_SPEED 255
+    // Check if the motors are within a small threshold of the target (zero position)
+    if (abs(leftEncoderPos) < 5 && abs(rightEncoderPos) < 5)
+    {
+        // Stop the motors if close enough to the target
+        controlMotor(0, 0);
+        return; // Exit the function early to avoid running the motors further
+    }
 
-// Motor structures
-struct Motor {
-    volatile long encoderPos;
-    int targetPos;
-    bool direction;
-    PID* pid;
-    ramp* ramp;
-    double input, output, setpoint;
-    int fwdPin, bwdPin;
-};
-
-Motor motorA, motorB;
-
-// PID constants
-const double Kp = 1, Ki = 0.04, Kd = 0.001;
-
-// Function prototypes
-void setupMotor(Motor& motor, int fwdPin, int bwdPin, int encoderPin);
-void handleEncoder(Motor& motor);
-void controlMotor(Motor& motor);
-
-void setup() {
-    Serial.begin(115200);  // Increased baud rate for faster communication
-
-    setupMotor(motorA, MOTOR_A_FWD, MOTOR_A_BWD, ENCODER_A);
-    setupMotor(motorB, MOTOR_B_FWD, MOTOR_B_BWD, ENCODER_B);
-
-    // Attach interrupts
-    attachInterrupt(digitalPinToInterrupt(ENCODER_A), []{ handleEncoder(motorA); }, RISING);
-    attachInterrupt(digitalPinToInterrupt(ENCODER_B), []{ handleEncoder(motorB); }, RISING);
+    // Otherwise, continue controlling the motors using PID output
+    controlMotor(leftOutput, rightOutput);
 }
 
-void loop() {
-    // Update both motors
-    updateMotor(motorA);
-    updateMotor(motorB);
+void handshake()
+{
+    // Set the target setpoints
+    leftSetpoint = handshakepos; // Keep the left motor stationary
+    rightSetpoint = 0;           // Move the right motor to position 150
 
-    // Print debug info every 100ms
-    static unsigned long lastPrint = 0;
-    if (millis() - lastPrint > 100) {
-        printDebugInfo();
-        lastPrint = millis();
+    // Update the encoder readings
+    leftInput = leftEncoderPos;
+    rightInput = rightEncoderPos;
+
+    // Compute PID output
+    leftMotorPID.Compute();
+    rightMotorPID.Compute();
+
+    // Check if the right motor is near the target (150)
+    if (abs(rightEncoderPos - 150) < 5)
+    {
+        // Stop the motors if close enough to the target
+        controlMotor(0, 0);
+        return; // Exit the function early to avoid running the motors further
+    }
+
+    // Keep the left motor stationary and control the right motor with PID output
+    controlMotor(leftOutput, 0);
+}
+
+void loop()
+{
+    // Serial.print(leftEncoderPos);
+    // Serial.print("\t");
+    // Serial.print(rightEncoderPos);
+    // Serial.print("\t");
+    // Serial.print(currentLeftTarget);
+    // Serial.print("\t");
+    // Serial.print(currentLeftTarget);
+    // Serial.print("\t");
+    // Serial.print(leftSetpoint);
+    // Serial.print("\t");
+    // Serial.println(rightSetpoint);
+
+    if (digitalRead(sl1) == 1 && digitalRead(sl2) == 0)
+    {
+        walking();
+        Serial.println("walking");
+    }
+    else if (digitalRead(sl1) == 0 && digitalRead(sl2) == 1)
+    {
+        returnToZero();
+        Serial.println("home");
+    }
+    else if (digitalRead(sl1) == 1 && digitalRead(sl2) == 1)
+    {
+        handshake();
+        Serial.println("handshake");
     }
 }
-
-void setupMotor(Motor& motor, int fwdPin, int bwdPin, int encoderPin) {
-    motor.fwdPin = fwdPin;
-    motor.bwdPin = bwdPin;
-    motor.encoderPos = 0;
-    motor.targetPos = 0;
-    motor.direction = false;
-
-    pinMode(fwdPin, OUTPUT);
-    pinMode(bwdPin, OUTPUT);
-    pinMode(encoderPin, INPUT_PULLUP);
-
-    motor.pid = new PID(&motor.input, &motor.output, &motor.setpoint, Kp, Ki, Kd, DIRECT);
-    motor.pid->SetMode(AUTOMATIC);
-    motor.pid->SetOutputLimits(-MAX_SPEED, MAX_SPEED);
-
-    motor.ramp = new ramp();
-    motor.ramp->go(0);
-}
-
-void handleEncoder(Motor& motor) {
-    if (!motor.direction) {
-        motor.encoderPos++;
-    } else {
-        motor.encoderPos--;
-    }
-}
-
-void updateMotor(Motor& motor) {
-    motor.input = motor.encoderPos;
-    motor.setpoint = motor.targetPos;
-
-    motor.pid->Compute();
-
-    motor.ramp->go(motor.output);
-    int currentSpeed = motor.ramp->update();
-
-    controlMotor(motor, currentSpeed);
-}
-
-void controlMotor(Motor& motor, int speed) {
-    speed = constrain(speed, -MAX_SPEED, MAX_SPEED);
-    if (speed > 0) {
-        analogWrite(motor.fwdPin, speed);
-        analogWrite(motor.bwdPin, 0);
-        motor.direction = false;
-    } else if (speed < 0) {
-        analogWrite(motor.fwdPin, 0);
-        analogWrite(motor.bwdPin, -speed);
-        motor.direction = true;
-    } else {
-        analogWrite(motor.fwdPin, 0);
-        analogWrite(motor.bwdPin, 0);
-    }
-}
-
-void printDebugInfo() {
-    Serial.print("A: ");
-    Serial.print(motorA.encoderPos);
-    Serial.print(",");
-    Serial.print(motorA.output);
-    Serial.print(" B: ");
-    Serial.print(motorB.encoderPos);
-    Serial.print(",");
-    Serial.println(motorB.output);
-}  */
