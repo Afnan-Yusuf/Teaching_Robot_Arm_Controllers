@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <PID_v1.h>
 #include <Ramp.h> // Include the Ramp library
 
@@ -10,6 +11,9 @@
 #define sl1 0
 #define sl2 1
 
+int modet = 2;
+
+int mode = 0;
 // Encoder pins
 #define LEFT_ENCODER 2
 #define RIGHT_ENCODER 3
@@ -19,6 +23,9 @@ int maxSpeed = 50;
 bool leftDir = false; // Direction flags
 bool rightDir = false;
 
+int previousMode = -1; // -1 indicates no previous mode
+
+int errorl, errorr;
 // Encoder variables
 volatile long leftEncoderPos = 0;
 volatile long rightEncoderPos = 0;
@@ -33,7 +40,7 @@ int currentRightTarget = targetRightPos;
 // PID variables
 double leftSetpoint, leftInput, leftOutput;
 double rightSetpoint, rightInput, rightOutput;
-double Kp = 1.8, Ki = 0.06, Kd = 0.001;
+double Kp = 2, Ki = 0.06, Kd = 0.001;
 
 PID leftMotorPID(&leftInput, &leftOutput, &leftSetpoint, Kp, Ki, Kd, DIRECT);
 PID rightMotorPID(&rightInput, &rightOutput, &rightSetpoint, Kp, Ki, Kd, DIRECT);
@@ -130,8 +137,12 @@ void setup()
 // Walking motion control
 void walking()
 {
+
     leftInput = leftEncoderPos;
     rightInput = rightEncoderPos;
+
+    errorl = currentLeftTarget - leftEncoderPos;
+    errorr = currentRightTarget - rightEncoderPos;
 
     // Adjust the target positions when within error threshold
     if (abs(currentLeftTarget - leftEncoderPos) < 5 && abs(currentRightTarget - rightEncoderPos) < 5)
@@ -156,6 +167,17 @@ void walking()
 
     // Ramp motor speeds based on PID outputs
     controlMotor(leftOutput, rightOutput);
+     Serial.print(leftEncoderPos);
+     Serial.print("\t");
+     Serial.print(rightEncoderPos);
+     Serial.print("\t");
+     Serial.print(leftSetpoint);
+     Serial.print("\t");
+     Serial.print(rightSetpoint);
+     Serial.print("\t");
+     Serial.print(errorl);
+     Serial.print("\t");
+     Serial.println(errorr);
 }
 
 // Return to zero position
@@ -213,31 +235,44 @@ void handshake()
 
 void loop()
 {
-    // Serial.print(leftEncoderPos);
-    // Serial.print("\t");
-    // Serial.print(rightEncoderPos);
-    // Serial.print("\t");
-    // Serial.print(currentLeftTarget);
-    // Serial.print("\t");
-    // Serial.print(currentLeftTarget);
-    // Serial.print("\t");
-    // Serial.print(leftSetpoint);
-    // Serial.print("\t");
-    // Serial.println(rightSetpoint);
+    if (digitalRead(sl1) == 1)
+    {
+        mode = 0; // Walking mode
+    }
+    else
+    {
+        mode = 1; // Return to zero mode
+    }
 
-    if (digitalRead(sl1) == 1 && digitalRead(sl2) == 0)
+    // Check for mode change
+    if (mode != previousMode)
+    {
+        // Reset setpoints on mode change
+        if (mode == 0)
+        {
+            // Set initial walking setpoints
+            leftSetpoint = currentLeftTarget;
+            rightSetpoint = currentRightTarget;
+        }
+        else if (mode == 1)
+        {
+            // Set return-to-zero setpoints
+            leftSetpoint = 0;
+            rightSetpoint = 0;
+        }
+
+        // Update previous mode
+        previousMode = mode;
+    }
+
+    // Execute functions based on the current mode
+    if (mode == 0)
     {
         walking();
-        Serial.println("walking");
     }
-    else if (digitalRead(sl1) == 0 && digitalRead(sl2) == 1)
+    else if (mode == 1)
     {
         returnToZero();
-        Serial.println("home");
-    }
-    else if (digitalRead(sl1) == 1 && digitalRead(sl2) == 1)
-    {
-        handshake();
-        Serial.println("handshake");
     }
 }
+
