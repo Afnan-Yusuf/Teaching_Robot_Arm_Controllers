@@ -40,7 +40,7 @@ int currentRightTarget = targetRightPos;
 // PID variables
 double leftSetpoint, leftInput, leftOutput;
 double rightSetpoint, rightInput, rightOutput;
-double Kp = 2, Ki = 0.06, Kd = 0.001;
+double Kp = 3, Ki = 0.1, Kd = 0.001;
 
 PID leftMotorPID(&leftInput, &leftOutput, &leftSetpoint, Kp, Ki, Kd, DIRECT);
 PID rightMotorPID(&rightInput, &rightOutput, &rightSetpoint, Kp, Ki, Kd, DIRECT);
@@ -167,17 +167,17 @@ void walking()
 
     // Ramp motor speeds based on PID outputs
     controlMotor(leftOutput, rightOutput);
-     Serial.print(leftEncoderPos);
-     Serial.print("\t");
-     Serial.print(rightEncoderPos);
-     Serial.print("\t");
-     Serial.print(leftSetpoint);
-     Serial.print("\t");
-     Serial.print(rightSetpoint);
-     Serial.print("\t");
-     Serial.print(errorl);
-     Serial.print("\t");
-     Serial.println(errorr);
+    //  Serial.print(leftEncoderPos);
+    //  Serial.print("\t");
+    //  Serial.print(rightEncoderPos);
+    //  Serial.print("\t");
+    //  Serial.print(leftSetpoint);
+    //  Serial.print("\t");
+    //  Serial.print(rightSetpoint);
+    //  Serial.print("\t");
+    //  Serial.print(errorl);
+    //  Serial.print("\t");
+    //  Serial.println(errorr);
 }
 
 // Return to zero position
