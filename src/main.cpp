@@ -40,7 +40,7 @@ int currentRightTarget = targetRightPos;
 // PID variables
 double leftSetpoint, leftInput, leftOutput;
 double rightSetpoint, rightInput, rightOutput;
-double Kp = 5, Ki = 0.1, Kd = 0.001;
+double Kp = 4, Ki = 0.0, Kd = 0.005;
 
 PID leftMotorPID(&leftInput, &leftOutput, &leftSetpoint, Kp, Ki, Kd, DIRECT);
 PID rightMotorPID(&rightInput, &rightOutput, &rightSetpoint, Kp, Ki, Kd, DIRECT);
@@ -277,6 +277,6 @@ void loop()
     }else if (mode == 2){
         handshake();
     }
-    Serial.println(mode);
+    //Serial.println(mode);
 }
 
