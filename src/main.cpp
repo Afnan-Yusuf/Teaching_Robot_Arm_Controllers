@@ -40,7 +40,7 @@ int currentRightTarget = targetRightPos;
 // PID variables
 double leftSetpoint, leftInput, leftOutput;
 double rightSetpoint, rightInput, rightOutput;
-double Kp = 3, Ki = 0.1, Kd = 0.001;
+double Kp = 5, Ki = 0.1, Kd = 0.001;
 
 PID leftMotorPID(&leftInput, &leftOutput, &leftSetpoint, Kp, Ki, Kd, DIRECT);
 PID rightMotorPID(&rightInput, &rightOutput, &rightSetpoint, Kp, Ki, Kd, DIRECT);
@@ -54,6 +54,7 @@ int rampTargetSpeed = 0;
 unsigned long walkingStartTime;
 bool isWalking = true;
 
+char x;
 // Function to handle encoder interrupts
 void handleLeftEncoder()
 {
@@ -111,8 +112,6 @@ void setup()
     pinMode(RMF, OUTPUT);
     pinMode(RMB, OUTPUT);
 
-    pinMode(sl1, OUTPUT);
-    pinMode(sl2, OUTPUT);
 
     // Encoder setup
     pinMode(LEFT_ENCODER, INPUT);
@@ -235,13 +234,15 @@ void handshake()
 
 void loop()
 {
-    if (digitalRead(sl1) == 1)
-    {
-        mode = 0; // Walking mode
+    if(Serial.available() > 0){
+        x = Serial.read();
     }
-    else
-    {
-        mode = 1; // Return to zero mode
+    if(x == '1'){
+        mode = 1;
+    }else if (x == '2'){
+        mode = 0;
+    }else if (x == '3'){
+        mode = 2;
     }
 
     // Check for mode change
@@ -273,6 +274,9 @@ void loop()
     else if (mode == 1)
     {
         returnToZero();
+    }else if (mode == 2){
+        handshake();
     }
+    Serial.println(mode);
 }
 
